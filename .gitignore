@@ -51,7 +51,8 @@ Module.symvers
 Mkfile.old
 dkms.conf
 
-# Netbeans spec**/nbproject/private/
+# Netbeans spec
+**/nbproject/private/
 **/nbproject/Makefile-*.mk
 **/nbproject/Package-*.bash
 build/
