@@ -60,4 +60,6 @@ nbbuild/
 dist/
 nbdist/
 .nb-gradle/ific
+nbactions.xml
+nb-configuration.xml
 
