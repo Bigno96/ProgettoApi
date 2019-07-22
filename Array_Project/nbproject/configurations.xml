@@ -38,9 +38,6 @@
         <cTool>
           <standard>10</standard>
         </cTool>
-        <linkerTool>
-          <commandLine>-lm</commandLine>
-        </linkerTool>
       </compileType>
       <item path="main.c" ex="false" tool="0" flavor2="0">
       </item>
