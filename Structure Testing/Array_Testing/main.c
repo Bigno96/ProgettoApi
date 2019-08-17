@@ -69,18 +69,30 @@ int binary_search(char *arr[], const int size, char *target) {
 }
 
 /*
- * Function to insert new element in the array
- * Reallocates if array is full
+ * Inserts in order new element in the array
  * Returns new number of element
  */
-int insert(char* arr[], char* new_elem, int elem_count) { 
+int ordered_insert(char** arr, char* new_elem, int elem_count) { 
     
-    if (binary_search(arr, elem_count, new_elem) < 0) {
-        strncpy(arr[elem_count++], new_elem, ENTITY_SIZE);     // dest, src
-        qsort(arr, elem_count, sizeof(char*), myCompare);     // sorting by alphabetical order
-    }
+    int i, target;
+    
+    if (binary_search(arr, elem_count, new_elem) >= 0) 
+        return elem_count;
+    
+    if (elem_count == 0)
+        strncpy(arr[0], new_elem, ENTITY_SIZE);
+    
+    else {
+        for (i=0; (i<elem_count) && (strcmp(arr[i], new_elem)<0); i++);
+        target = i;
 
-    return elem_count;
+        for (i=elem_count-1; i>target; i--) 
+            strncpy(arr[i+1], arr[i], ENTITY_SIZE);
+
+        strncpy(arr[target], new_elem, ENTITY_SIZE);
+    }
+    
+    return ++elem_count;  
 } 
 
 /*
@@ -134,7 +146,7 @@ int main(int argc, char** argv) {
                 curr_size *= 2;
                 ent_arr = reallocate(ent_arr, curr_size);
             }
-            ent_count = insert(ent_arr, ent, ent_count);       
+            ent_count = ordered_insert(ent_arr, ent, ent_count);       
         }   
 
         else if (strcmp(command, "delent") == 0) {                 // addent

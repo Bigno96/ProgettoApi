@@ -169,10 +169,10 @@ static inline char** realloc_string_array(char** arr, size_t *max_size) {
 }
 
 /*
- * Adds entity into entity array in order. Double the size if it's full.
+ * Adds entity into entity array. Double the size if it's full.
  */
 void add_entity(char* new_ent) {
-    
+       
     int i;
     int target;
     
@@ -185,12 +185,12 @@ void add_entity(char* new_ent) {
         for (i=0; (i<ent_count) && (strcmp(ent_arr[i], new_ent)<0); i++);
 
         if (i == ent_count)      
-            memcpy(ent_arr[ent_count], new_ent, ENTITY_SIZE);
+            strncpy(ent_arr[ent_count], new_ent, ENTITY_SIZE);
         else {
             target = i;
             for (i=ent_count-1; i>=target; i--) 
                 memmove(ent_arr[i+1], ent_arr[i], sizeof(char)*ENTITY_SIZE);
-            memcpy(ent_arr[target], new_ent, ENTITY_SIZE);                      // dest, src
+            strncpy(ent_arr[target], new_ent, ENTITY_SIZE);                      // dest, src
         }
         ent_count++;
     }
@@ -521,7 +521,7 @@ void free_all() {
  */
 int main(int argc, char** argv) {
     
-    input = fopen("../Test.txt", "r+");
+    input = stdin;
     output = stdout;
     
     initialize();
