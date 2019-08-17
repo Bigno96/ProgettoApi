@@ -20,7 +20,7 @@ typedef struct rel_str {
     char* rel;                          // name of the relation
     
     int n_most_dest;                     // number of relation received by these entities
-    char** most_dest_arr;               // array of entities that are receiving the most for this relation
+    char** most_dest_arr;                // array of entities that are receiving the most for this relation
     size_t most_dest_count;             
     size_t most_dest_size;
     
@@ -127,6 +127,79 @@ void print_rel_arr() {
 // END OF DEBUGGING FUNCTIONS
 
 /*
+ * Release all memory
+ */
+void free_all();
+
+/*
+ * Sets up all array and their sizes
+ */
+void initialize();
+
+/*
+ * Reads file passed as input until 'end' is reached
+ * Parses all commands and manages operations related to them
+ */
+void execute(FILE* input);
+
+/*
+ * Relationship monitoring built only with array structures
+ */
+int main(int argc, char** argv) {
+    
+    input = fopen("../Test.txt", "r+");
+    output = stdout;
+    
+    initialize();
+    execute(input);
+    free_all();
+
+    return(EXIT_SUCCESS);
+}
+
+/*
+ * Release all memory
+ */
+void free_all() {
+    
+    int i, j;
+    
+    // free entity array
+    for (i=0; i<ent_count; i++) 
+        free(ent_arr[i]);
+    free(ent_arr);
+
+    // free relation array
+    for (i=0; i<rel_count; i++) {
+        
+        free(rel_arr[i].most_dest_arr);
+        
+        for (j=0; j<rel_arr[i].dest_count; j++) 
+            free(rel_arr[i].dest_arr[j].dest_of);
+
+        free(rel_arr[i].dest_arr);
+        free(rel_arr[i].rel);
+    }
+    free(rel_arr);
+}
+
+/*
+ * Sets up all array and their sizes
+ */
+void initialize() {
+    
+    // initialization of entity array
+    ent_count = 0;
+    ent_size = ENTITY_ARRAY_SIZE;
+    ent_arr = calloc(ent_size, sizeof(char*));
+    
+    // initialization of report array
+    rel_count = 0;
+    rel_size = RELATION_ARRAY_SIZE;
+    rel_arr = calloc(rel_size, sizeof(t_rel_str));
+}
+
+/*
  * Search for a string in the passed array. 
  * Return position of the corrisponding string if found, -1 else
  */
@@ -157,7 +230,6 @@ static int string_compare(const void* a, const void* b) {
     return strcmp(*(const char**)a, *(const char**)b);      // ascii order given by strcmp
 } 
 
-
 /*
  * Reallocate passed array of string with double the size. Returns new max size.
  */
@@ -169,30 +241,40 @@ static inline char** realloc_string_array(char** arr, size_t *max_size) {
 }
 
 /*
+ * Inserts element into string array in order. 
+ * Does not check for boundaries nor membership.
+ * Returns new element count.
+ */
+int insert_string_element(char** arr, char* new_elem, size_t elem_count, size_t elem_size) {
+    
+    int i, target;
+    
+    arr[elem_count] = calloc(elem_size, sizeof(char));                  // allocate at tail new space  
+    for (i=0; (i<elem_count) && (strcmp(arr[i], new_elem)<0); i++);     // find place where to insert new element
+
+    if (i == elem_count)                                                // if it's last, just insert
+        memcpy(arr[elem_count], new_elem, elem_size);
+    else {
+        target = i;
+        for (i=elem_count-1; i>=target; i--)                            // else, shift left the remaining array
+            memmove(arr[i+1], arr[i], sizeof(char)*elem_size);
+        memcpy(arr[target], new_elem, elem_size);                       // dest, src
+    }
+    
+    return ++elem_count;
+}
+
+/*
  * Adds entity into entity array in order. Double the size if it's full.
  */
 void add_entity(char* new_ent) {
-    
-    int i;
-    int target;
-    
+
     if (search_string_array(ent_arr, ent_count, new_ent) == -1) {           // if not already in the array
     
         if (ent_count == ent_size) 
             ent_arr = realloc_string_array(ent_arr, &ent_size);
-
-        ent_arr[ent_count] = calloc(ENTITY_SIZE, sizeof(char));
-        for (i=0; (i<ent_count) && (strcmp(ent_arr[i], new_ent)<0); i++);
-
-        if (i == ent_count)      
-            memcpy(ent_arr[ent_count], new_ent, ENTITY_SIZE);
-        else {
-            target = i;
-            for (i=ent_count-1; i>=target; i--) 
-                memmove(ent_arr[i+1], ent_arr[i], sizeof(char)*ENTITY_SIZE);
-            memcpy(ent_arr[target], new_ent, ENTITY_SIZE);                      // dest, src
-        }
-        ent_count++;
+        
+        ent_count = insert_string_element(ent_arr, new_ent, ent_count, ENTITY_SIZE);
     }
 }
 
@@ -220,14 +302,6 @@ t_rel_str* search_relation(char* target) {
 }
 
 /*
- * Compare function for qsort for relation array
- */
-static int rel_compare(const void* a, const void* b) { 
-    
-    return strcmp(((t_rel_str*)a)->rel, ((t_rel_str*)b)->rel);      // ascii order of relation
-} 
-
-/*
  * Create relation structure when a new relation is introduced
  * Fills relation name
  */
@@ -245,6 +319,29 @@ void fill_rel_str(t_rel_str* el, char* rel) {
     el->dest_arr = calloc(DESTINATION_ARRAY_SIZE, sizeof(t_dest_str));          // create destination array   
     el->dest_count = 0; 
     el->dest_size = DESTINATION_ARRAY_SIZE;
+}
+
+/*
+ * Inserts element into relation array in order. 
+ * Does not check for boundaries nor membership.
+ * Returns new element count.
+ */
+int insert_relation_element(t_rel_str* arr, char* new_elem, size_t elem_count) {
+    
+    int i, target;
+    
+    for (i=0; (i<elem_count) && (strcmp(arr[i].rel, new_elem)<0); i++);         // find place where to insert new element
+
+    if (i == elem_count)   
+        fill_rel_str(&arr[elem_count], new_elem);                               // if it's last element, just fill it
+    else {
+        target = i;
+        for (i=elem_count-1; i>=target; i--)                                    // else, shift left than fill it
+            memmove(&arr[i+1], &arr[i], sizeof(t_rel_str));
+        fill_rel_str(&arr[target], new_elem);
+    }
+    
+    return ++elem_count;
 }
 
 /*
@@ -280,14 +377,6 @@ t_dest_str* search_destination(t_dest_str* dest_arr, const int dest_count, char*
 }
 
 /*
- * Compare function for qsort for destination array
- */
-static int dest_compare(const void* a, const void* b) { 
-    
-    return strcmp(((t_dest_str*)a)->dest, ((t_dest_str*)b)->dest);          // ascii order of destination
-} 
-
-/*
  * Reallocate destination array with double the size, return new size
  */
 static inline t_dest_str* realloc_dest_array(size_t *max_dest, t_dest_str* dest_arr) {
@@ -311,6 +400,29 @@ void fill_dest_str(t_dest_str* el, char* dest) {
 }
 
 /*
+ * Inserts element into destination array in order. 
+ * Does not check for boundaries nor membership.
+ * Returns new element count.
+ */
+int insert_dest_element(t_dest_str* arr, char* new_elem, size_t elem_count) {
+    
+    int i, target;
+    
+    for (i=0; (i<elem_count) && (strcmp(arr[i].dest, new_elem)<0); i++);        // find place where to insert new element
+
+    if (i == elem_count)   
+        fill_dest_str(&arr[elem_count], new_elem);                              // if it's last element, just fill it
+    else {
+        target = i;
+        for (i=elem_count-1; i>=target; i--)                                    // else, shift left than fill it
+            memmove(&arr[i+1], &arr[i], sizeof(t_dest_str));
+        fill_dest_str(&arr[target], new_elem);
+    }
+    
+    return ++elem_count;
+}
+
+/*
  * Update destination_of array with the new origin 
  */
 void update_dest_of(t_dest_str* dest_str, char* orig) {
@@ -318,8 +430,20 @@ void update_dest_of(t_dest_str* dest_str, char* orig) {
     if (dest_str->dest_of_count == dest_str->dest_of_size) 
         dest_str->dest_of = realloc_string_array(dest_str->dest_of, &dest_str->dest_of_size);
 
-    dest_str->dest_of[dest_str->dest_of_count++] = orig;
-    qsort(dest_str->dest_of, dest_str->dest_of_count, sizeof(char*), string_compare);    
+    int i, target;
+    
+    for (i=0; (i<dest_str->dest_of_count) && (strcmp(dest_str->dest_of[i], orig)<0); i++);   // find place where to insert new element
+
+    if (i == dest_str->dest_of_count)                                                // if it's last, just insert
+        dest_str->dest_of[i] = orig;
+    else {
+        target = i;
+        for (i=dest_str->dest_of_count-1; i>=target; i--)                            // else, shift left the remaining array
+            dest_str->dest_of[i+1] = dest_str->dest_of[i];
+        dest_str->dest_of[target] = orig;                       // dest, src
+    }
+    
+    dest_str->dest_of_count++;
 }
 
 /*
@@ -363,9 +487,7 @@ void add_rel(char* orig, char* dest, char* rel) {
         if (rel_count == rel_size)                                          // resize relation array if full
             realloc_rel_array();
         
-        rel_str = &rel_arr[rel_count++]; 
-        fill_rel_str(rel_str, rel);                                         // create new relation structure
-        qsort(rel_arr, rel_count, sizeof(t_rel_str), rel_compare);          // sorting by ascii order of relation
+        rel_count = insert_relation_element(rel_arr, rel, rel_count);
         rel_str = search_relation(rel);
     }
     
@@ -377,9 +499,7 @@ void add_rel(char* orig, char* dest, char* rel) {
         if (rel_str->dest_count == rel_str->dest_size)                     // resize destination array if full
             rel_str->dest_arr = realloc_dest_array(&rel_str->dest_size, rel_str->dest_arr);
         
-        dest_str = &rel_str->dest_arr[rel_str->dest_count++];
-        fill_dest_str(dest_str, ent_arr[dest_pos]);                          // create new destination structure
-        qsort(rel_str->dest_arr, rel_str->dest_count, sizeof(t_dest_str), dest_compare);              // sorting by ascii order of destination
+        rel_str->dest_count = insert_dest_element(rel_str->dest_arr, ent_arr[dest_pos], rel_str->dest_count);
         dest_str = search_destination(rel_str->dest_arr, rel_str->dest_count, dest);
     }
     
@@ -426,7 +546,7 @@ void report() {
  * Reads file passed as input until 'end' is reached
  * Parses all commands and manages operations related to them
  */
-void execute(FILE* file) {
+void execute(FILE* input) {
     
     char buffer[BUFFER_SIZE];           // buffer for each line
     char ent[ENTITY_SIZE];              // entity
@@ -435,7 +555,7 @@ void execute(FILE* file) {
     char rel[RELATION_SIZE];            // relation
     char command[COMMAND_SIZE];         // command
     
-    if (fgets(buffer, BUFFER_SIZE, file))        // read first line
+    if (fgets(buffer, BUFFER_SIZE, input))        // read first line
         sscanf(buffer, "%s", command);
 
     while(strcmp(command, "end") != 0) {                      // if not "end" command, continues to read
@@ -467,67 +587,7 @@ void execute(FILE* file) {
             //printf("report\n");
         }
         
-        if (fgets(buffer, BUFFER_SIZE, file))
+        if (fgets(buffer, BUFFER_SIZE, input))
             sscanf(buffer, "%s", command);
     }   
 }
-
-/*
- * Sets up all array and their sizes
- */
-void initialize() {
-    
-    // initialization of entity array
-    ent_count = 0;
-    ent_size = ENTITY_ARRAY_SIZE;
-    ent_arr = calloc(ent_size, sizeof(char*));
-    
-    // initialization of report array
-    rel_count = 0;
-    rel_size = RELATION_ARRAY_SIZE;
-    rel_arr = calloc(rel_size, sizeof(t_rel_str));
-}
-
-/*
- * Release all memory
- */
-void free_all() {
-    
-    int i, j;
-    
-    // free entity array
-    for (i=0; i<ent_count; i++) 
-        free(ent_arr[i]);
-    free(ent_arr);
-
-    // free relation array
-    for (i=0; i<rel_count; i++) {
-        
-        free(rel_arr[i].most_dest_arr);
-        
-        for (j=0; j<rel_arr[i].dest_count; j++) 
-            free(rel_arr[i].dest_arr[j].dest_of);
-
-        free(rel_arr[i].dest_arr);
-        
-        free(rel_arr[i].rel);
-    }
-
-    free(rel_arr);
-}
-
-/*
- * Relationship monitoring built only with array structures
- */
-int main(int argc, char** argv) {
-    
-    input = fopen("../Test.txt", "r+");
-    output = stdout;
-    
-    initialize();
-    execute(input);
-    free_all();
-
-    return(EXIT_SUCCESS);
-}
-
