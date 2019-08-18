@@ -117,7 +117,7 @@ void print_rel_arr() {
     
     int i;
     for (i=0; i<rel_count; i++) {
-        printf("rep_elem[%d] -> ", i);
+        printf("rel_elem[%d] -> ", i);
         print_rel_str(rel_arr[i]);
     }
     
@@ -158,6 +158,22 @@ int main(int argc, char** argv) {
 }
 
 /*
+ * Free passed relation structure
+ */
+static inline void free_rel_str(t_rel_str* rel_str) {
+    
+    int i;
+    
+    free(rel_str->most_dest_arr);
+        
+    for (i=0; i<rel_str->dest_count; i++) 
+        free(rel_str->dest_arr[i].dest_of);
+
+    free(rel_str->dest_arr);
+    free(rel_str->rel);
+}
+
+/*
  * Release all memory
  */
 void free_all() {
@@ -170,16 +186,9 @@ void free_all() {
     free(ent_arr);
 
     // free relation array
-    for (i=0; i<rel_count; i++) {
-        
-        free(rel_arr[i].most_dest_arr);
-        
-        for (j=0; j<rel_arr[i].dest_count; j++) 
-            free(rel_arr[i].dest_arr[j].dest_of);
-
-        free(rel_arr[i].dest_arr);
-        free(rel_arr[i].rel);
-    }
+    for (i=0; i<rel_count; i++) 
+        free_rel_str(&rel_arr[i]);
+       
     free(rel_arr);
 }
 
@@ -241,48 +250,26 @@ static inline char** realloc_string_array(char** arr, size_t *max_size) {
 }
 
 /*
- * Inserts element into string array in order. 
- * Does not check for boundaries nor membership.
- * Returns new element count.
- */
-int insert_string_element(char** arr, char* new_elem, size_t elem_count, size_t elem_size) {
-    
-    int i, target;
-    
-    arr[elem_count] = calloc(elem_size, sizeof(char));                  // allocate at tail new space  
-    for (i=0; (i<elem_count) && (strcmp(arr[i], new_elem)<0); i++);     // find place where to insert new element
-
-    if (i == elem_count)                                                // if it's last, just insert
-        memcpy(arr[elem_count], new_elem, elem_size);
-    else {
-        target = i;
-        for (i=elem_count-1; i>=target; i--)                            // else, shift left the remaining array
-            memmove(arr[i+1], arr[i], sizeof(char)*elem_size);
-        memcpy(arr[target], new_elem, elem_size);                       // dest, src
-    }
-    
-    return ++elem_count;
-}
-
-/*
  * Adds entity into entity array in order. Double the size if it's full.
  */
 void add_entity(char* new_ent) {
+   
+    if (search_string_array(ent_arr, ent_count, new_ent) == -1) {
 
-    if (search_string_array(ent_arr, ent_count, new_ent) == -1) {           // if not already in the array
-    
         if (ent_count == ent_size) 
             ent_arr = realloc_string_array(ent_arr, &ent_size);
-        
-        ent_count = insert_string_element(ent_arr, new_ent, ent_count, ENTITY_SIZE);
-    }
+
+        ent_arr[ent_count] = calloc(ENTITY_SIZE, sizeof(char));
+        strncpy(ent_arr[ent_count++], new_ent, ENTITY_SIZE);            // dest, src
+        qsort(ent_arr, ent_count, sizeof(char*), string_compare);       // sorting by ascii order
+     }
 }
 
 /*
  * Search for a relation in the relation array. 
- * Return relation structure pointer if found, null_relation_structure pointer else
+ * Return position if found, -1 else
  */
-t_rel_str* search_relation(char* target) {
+int search_relation(char* target) {
     
     int bottom = 0;
     int mid;
@@ -291,14 +278,14 @@ t_rel_str* search_relation(char* target) {
     while(bottom <= top) {      
         mid = (bottom + top)>>1;
         if (strcmp(rel_arr[mid].rel, target) == 0) 
-            return &rel_arr[mid];
+            return mid;
         else if (strcmp(rel_arr[mid].rel, target) > 0)          
             top = mid - 1;
         else if (strcmp(rel_arr[mid].rel, target) < 0)
             bottom = mid + 1;
     }
     
-    return NULL;
+    return -1;
 }
 
 /*
@@ -355,9 +342,9 @@ static inline void realloc_rel_array() {
 
 /*
  * Search for a destination in the destination array. 
- * Return destination structure pointer if found, null_destination_structure pointer else
+ * Return position if found, -1 else
  */
-t_dest_str* search_destination(t_dest_str* dest_arr, const int dest_count, char* target) {
+int search_destination(t_dest_str* dest_arr, const int dest_count, char* target) {
     
     int bottom = 0;
     int mid;
@@ -366,14 +353,14 @@ t_dest_str* search_destination(t_dest_str* dest_arr, const int dest_count, char*
     while(bottom <= top) {      
         mid = (bottom + top)>>1;
         if (strcmp(dest_arr[mid].dest, target) == 0) 
-            return &dest_arr[mid];
+            return mid;
         else if (strcmp(dest_arr[mid].dest, target) > 0)          
             top = mid - 1;
         else if (strcmp(dest_arr[mid].dest, target) < 0)
             bottom = mid + 1;
     }
     
-    return NULL;
+    return -1;
 }
 
 /*
@@ -440,7 +427,7 @@ void update_dest_of(t_dest_str* dest_str, char* orig) {
         target = i;
         for (i=dest_str->dest_of_count-1; i>=target; i--)                            // else, shift left the remaining array
             dest_str->dest_of[i+1] = dest_str->dest_of[i];
-        dest_str->dest_of[target] = orig;                       // dest, src
+        dest_str->dest_of[target] = orig;                       
     }
     
     dest_str->dest_of_count++;
@@ -450,15 +437,15 @@ void update_dest_of(t_dest_str* dest_str, char* orig) {
  * Update relation structure
  * Most_dest_arr is not sorted, will be sorted by report
  */
-void update_rel_str(t_rel_str* rel_str, char* dest, int dest_of_count) {
+static inline void update_rel_str(t_rel_str* rel_str, char* dest, int dest_of_count) {
     
-    if (rel_str->n_most_dest < dest_of_count) {
+    if (rel_str->n_most_dest < dest_of_count) {             // if new dest receives more relation 
         
         rel_str->most_dest_arr[0] = dest;
         rel_str->most_dest_count = 1;
         rel_str->n_most_dest = dest_of_count;
     }
-    else if (rel_str->n_most_dest == dest_of_count) {
+    else if (rel_str->n_most_dest == dest_of_count) {       // if new dest receives same amount of relation
         
         if (rel_str->most_dest_count == rel_str->most_dest_size) 
             rel_str->most_dest_arr = realloc_string_array(rel_str->most_dest_arr, &rel_str->most_dest_size);
@@ -474,39 +461,146 @@ void add_rel(char* orig, char* dest, char* rel) {
     
     int dest_pos = search_string_array(ent_arr, ent_count, dest);
     int orig_pos = search_string_array(ent_arr, ent_count, orig);
+    int pos;
+    t_rel_str* rel_str;
+    t_dest_str* dest_str;
     
     // if one of the entity is not registered, return
     if (dest_pos == -1 || orig_pos == -1)     
         return;
     
     // step 1: check if relation is present to use its destination array. If new, create new relation structure
-    t_rel_str* rel_str = search_relation(rel);
-    
-    if (!rel_str) {
+    pos = search_relation(rel);
+    if (pos == -1) {
         
         if (rel_count == rel_size)                                          // resize relation array if full
             realloc_rel_array();
         
         rel_count = insert_relation_element(rel_arr, rel, rel_count);
-        rel_str = search_relation(rel);
+        rel_str = &rel_arr[search_relation(rel)];
     }
+    else
+        rel_str = &rel_arr[pos];
     
     // step 2: check if destination of relation is present in destination array. If not, create new destination structure.
-    t_dest_str* dest_str = search_destination(rel_str->dest_arr, rel_str->dest_count, dest);
-    
-    if (!dest_str) {
+    pos = search_destination(rel_str->dest_arr, rel_str->dest_count, dest);
+    if (pos == -1) {
         
         if (rel_str->dest_count == rel_str->dest_size)                     // resize destination array if full
             rel_str->dest_arr = realloc_dest_array(&rel_str->dest_size, rel_str->dest_arr);
         
         rel_str->dest_count = insert_dest_element(rel_str->dest_arr, ent_arr[dest_pos], rel_str->dest_count);
-        dest_str = search_destination(rel_str->dest_arr, rel_str->dest_count, dest);
+        dest_str = &rel_str->dest_arr[search_destination(rel_str->dest_arr, rel_str->dest_count, dest)];
     }
+    else
+        dest_str = &rel_str->dest_arr[pos];
     
     // step 3: update dest of, src of and rel_str
     if (search_string_array(dest_str->dest_of, dest_str->dest_of_count, orig) == -1) {        // search if dest is already destination of orig. if not, update
         update_dest_of(dest_str, ent_arr[orig_pos]);
         update_rel_str(rel_str, ent_arr[dest_pos], dest_str->dest_of_count);
+    }
+}
+
+/*
+ * Deletes passed relation structure and fix relation array order
+ */
+void remove_rel_str(t_rel_str* rel_str, const int rel_pos) {
+    int i;
+    
+    free_rel_str(rel_str);
+    for (i=rel_pos; i<rel_count; i++)
+        memmove(&rel_arr[i], &rel_arr[i+1], sizeof(t_rel_str));             // fix relation array shifting left
+    rel_count--;
+}
+
+/*
+ * Updates destination of count. If only one origin is present, removes dest_str 
+ */
+void update_dest_of_count(t_dest_str* dest_str, t_rel_str* rel_str, const int dest_pos, const int orig_pos) {
+    
+    int i;
+    
+    if (dest_str->dest_of_count == 1) {             // if only 1 origin is in the array
+        
+        free(dest_str->dest_of);                    // clean dest_str and fix dest_arr
+        for (i=dest_pos; i<rel_str->dest_count; i++)                                    
+            memmove(&rel_str->dest_arr[i], &rel_str->dest_arr[i+1], sizeof(t_dest_str));
+        rel_str->dest_count--;
+    }
+    else {
+        
+        for (i=orig_pos; i<dest_str->dest_of_count; i++)        // remove the origin and fix dest_of_arr
+            dest_str->dest_of[i] = dest_str->dest_of[i+1];
+        dest_str->dest_of_count--;
+    }
+}
+
+/*
+ * Recomputes which entities receives most number of relation and updates most_dest_arr
+ */
+void recompute_most_dest(t_rel_str* rel_str) {
+    
+    int i;
+    rel_str->most_dest_count = 0;                   // resets initial values
+    rel_str->n_most_dest = 0;
+    
+    for(i=0; i<rel_str->dest_count; i++)            // for each destination, update most_dest _arr
+        update_rel_str(rel_str, rel_str->dest_arr[i].dest, rel_str->dest_arr[i].dest_of_count);
+}
+
+/*
+ * Delete, if exists, passed relation. 
+ */
+void del_rel(char* orig, char* dest, char* rel) {
+    
+    int i;
+    int rel_pos, dest_pos, orig_pos, most_dest_pos;
+    t_dest_str* dest_str;
+    t_rel_str* rel_str;
+    
+    rel_pos = search_relation(rel);             // find relation structure
+    if (rel_pos == -1)
+        return;
+    rel_str = &rel_arr[rel_pos];
+    
+    dest_pos = search_destination(rel_str->dest_arr, rel_str->dest_count, dest);        // find destination structure
+    if (dest_pos == -1)
+        return;
+    dest_str = &rel_str->dest_arr[dest_pos];
+    
+    orig_pos = search_string_array(dest_str->dest_of, dest_str->dest_of_count, orig);       // find position in destination_of
+    if (orig_pos == -1)
+        return;
+    
+    // find position in most_dest_arr
+    for (i=0; i<rel_str->most_dest_count && strcmp(rel_str->most_dest_arr[i], dest)!=0; i++);
+    most_dest_pos = i;
+    
+    // if it's the only relation for this relation, remove its relation structure 
+    if (rel_str->dest_count == 1 && dest_str->dest_of_count == 1) 
+        remove_rel_str(rel_str, rel_pos);
+    
+    // if dest it's not in the most_dest_arr, update it's dest_of_count
+    else if (most_dest_pos == rel_str->most_dest_count) 
+        update_dest_of_count(dest_str, rel_str, dest_pos, orig_pos);
+    
+    // if dest it's in the most_dest_arr
+    else {
+        
+        // if most_dest_count > 1, remove the relation and update it's dest_of_count
+        if (rel_str->most_dest_count > 1) { 
+            for (i=most_dest_pos; i<rel_str->most_dest_count; i++)              // fix most_dest_arr
+                rel_str->most_dest_arr[i] = rel_str->most_dest_arr[i+1];
+            rel_str->most_dest_count--;
+            
+            update_dest_of_count(dest_str, rel_str, dest_pos, orig_pos);
+        }
+        // if most_dest_count == 1, update dest_of_count and recompute most_dest_arr
+        else {
+            update_dest_of_count(dest_str, rel_str, dest_pos, orig_pos);
+            recompute_most_dest(rel_str);
+        }
     }
 }
 
@@ -574,18 +668,17 @@ void execute(FILE* input) {
         else if (strcmp(command, "addrel") == 0) {                  // addrel
             sscanf(buffer, "%s %s %s %s", command, orig, dest, rel);  
             add_rel(orig, dest, rel);
-            //print_rel_arr();        // REMOVE
+           // print_rel_arr();        // REMOVE
         }   
         
         else if (strcmp(command, "delrel") == 0) {                  // delrel
             sscanf(buffer, "%s %s %s %s", command, orig, dest, rel);   
-            //printf("delrel\n");
+            del_rel(orig, dest, rel);
+            //print_rel_arr();        // REMOVE
         }   
 
-        else if (strcmp(command, "report") == 0) {                  // report
+        else if (strcmp(command, "report") == 0)                  // report
             report();
-            //printf("report\n");
-        }
         
         if (fgets(buffer, BUFFER_SIZE, input))
             sscanf(buffer, "%s", command);
